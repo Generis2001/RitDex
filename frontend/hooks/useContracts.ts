@@ -2,10 +2,9 @@
 
 import { useCallback } from 'react';
 import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
-import { maxUint256 } from 'viem';
 import type { Address } from 'viem';
-import { ERC20_ABI, RITPOOL_ABI, RITBRIDGE_ABI, STAKING_ABI } from '@/lib/abi';
-import { RITUAL_TOKEN, STAKING_ADDRESS, RITPOOL_ADDRESS, RITBRIDGE_ADDRESS } from '@/lib/addresses';
+import { ERC20_ABI, RITPOOL_ABI, RITBRIDGE_ABI, RITSTAKE_ABI } from '@/lib/abi';
+import { RITUAL_TOKEN, RITPOOL_ADDRESS, RITSTAKE_ADDRESS, RITBRIDGE_ADDRESS } from '@/lib/addresses';
 
 // ── Generic write helper ──────────────────────────────────────────────────────
 export function useContractWrite() {
@@ -34,64 +33,28 @@ export function useContractWrite() {
   return { write };
 }
 
-// ── Approve helper ────────────────────────────────────────────────────────────
-export function useApprove() {
-  const { write } = useContractWrite();
-  const { address: userAddress } = useAccount();
-  const publicClient = usePublicClient();
-
-  const ensureAllowance = useCallback(async (token: Address, spender: Address, amount: bigint) => {
-    if (!userAddress) throw new Error('No wallet');
-    const current = await publicClient!.readContract({
-      address: token, abi: ERC20_ABI, functionName: 'allowance', args: [userAddress, spender],
-    }) as bigint;
-    if (current < amount) {
-      await write({ address: token, abi: ERC20_ABI, functionName: 'approve', args: [spender, maxUint256] });
-    }
-  }, [userAddress, publicClient, write]);
-
-  return { ensureAllowance };
-}
-
-// ── RITUAL ERC-20 balance ─────────────────────────────────────────────────────
+// ── Native RITUAL balance (gas token on Ritual Chain) ────────────────────────
 export function useRitualBalance() {
   const { address: userAddress } = useAccount();
   const publicClient = usePublicClient();
 
   const getBalance = useCallback(async (): Promise<bigint> => {
     if (!userAddress || !publicClient) return 0n;
-    return await publicClient.readContract({
-      address: RITUAL_TOKEN, abi: ERC20_ABI, functionName: 'balanceOf', args: [userAddress],
-    }) as bigint;
+    return await publicClient.getBalance({ address: userAddress });
   }, [userAddress, publicClient]);
 
   return { getBalance };
 }
 
-// ── Faucet — mint test ERC-20 RITUAL ─────────────────────────────────────────
-export function useFaucet() {
-  const { write } = useContractWrite();
-  const { address: userAddress } = useAccount();
-
-  const mintRitual = useCallback(async (amount: bigint): Promise<`0x${string}`> => {
-    if (!userAddress) throw new Error('No wallet');
-    return write({ address: RITUAL_TOKEN, abi: ERC20_ABI, functionName: 'mint', args: [userAddress, amount] });
-  }, [write, userAddress]);
-
-  return { mintRitual };
-}
-
-// ── RitPool ───────────────────────────────────────────────────────────────────
+// ── RitPool (native RITUAL) ───────────────────────────────────────────────────
 export function useRitPool() {
   const { write } = useContractWrite();
-  const { ensureAllowance } = useApprove();
   const { address: userAddress } = useAccount();
   const publicClient = usePublicClient();
 
   const deposit = useCallback(async (amount: bigint): Promise<`0x${string}`> => {
-    await ensureAllowance(RITUAL_TOKEN, RITPOOL_ADDRESS, amount);
-    return write({ address: RITPOOL_ADDRESS, abi: RITPOOL_ABI, functionName: 'deposit', args: [amount] });
-  }, [ensureAllowance, write]);
+    return write({ address: RITPOOL_ADDRESS, abi: RITPOOL_ABI, functionName: 'deposit', args: [], value: amount });
+  }, [write]);
 
   const withdraw = useCallback(async (shareAmount: bigint): Promise<`0x${string}`> => {
     return write({ address: RITPOOL_ADDRESS, abi: RITPOOL_ABI, functionName: 'withdraw', args: [shareAmount] });
@@ -120,10 +83,22 @@ export function useRitPool() {
 // ── RitBridge ─────────────────────────────────────────────────────────────────
 export function useRitBridge() {
   const { write } = useContractWrite();
-  const { ensureAllowance } = useApprove();
+  const { address: userAddress } = useAccount();
+  const publicClient = usePublicClient();
+
+  const ensureAllowance = useCallback(async (spender: Address, amount: bigint) => {
+    if (!userAddress) throw new Error('No wallet');
+    const current = await publicClient!.readContract({
+      address: RITUAL_TOKEN, abi: ERC20_ABI, functionName: 'allowance', args: [userAddress, spender],
+    }) as bigint;
+    if (current < amount) {
+      const { maxUint256 } = await import('viem');
+      await write({ address: RITUAL_TOKEN, abi: ERC20_ABI, functionName: 'approve', args: [spender, maxUint256] });
+    }
+  }, [userAddress, publicClient, write]);
 
   const lock = useCallback(async (amount: bigint, destChainId: number, recipient: Address): Promise<`0x${string}`> => {
-    await ensureAllowance(RITUAL_TOKEN, RITBRIDGE_ADDRESS, amount);
+    await ensureAllowance(RITBRIDGE_ADDRESS, amount);
     return write({
       address: RITBRIDGE_ADDRESS,
       abi: RITBRIDGE_ABI,
@@ -135,30 +110,28 @@ export function useRitBridge() {
   return { lock };
 }
 
-// ── Ritstake ─────────────────────────────────────────────────────────────────
+// ── RitStake (native RITUAL) ──────────────────────────────────────────────────
 export function useRitStake() {
   const { write } = useContractWrite();
-  const { ensureAllowance } = useApprove();
   const { address: userAddress } = useAccount();
   const publicClient = usePublicClient();
 
   const stake = useCallback(async (amount: bigint): Promise<`0x${string}`> => {
-    await ensureAllowance(RITUAL_TOKEN, STAKING_ADDRESS, amount);
-    return write({ address: STAKING_ADDRESS, abi: STAKING_ABI, functionName: 'stake', args: [RITUAL_TOKEN, amount] });
-  }, [ensureAllowance, write]);
+    return write({ address: RITSTAKE_ADDRESS, abi: RITSTAKE_ABI, functionName: 'stake', args: [], value: amount });
+  }, [write]);
 
   const unstake = useCallback(async (amount: bigint): Promise<`0x${string}`> => {
-    return write({ address: STAKING_ADDRESS, abi: STAKING_ABI, functionName: 'unstake', args: [RITUAL_TOKEN, amount] });
+    return write({ address: RITSTAKE_ADDRESS, abi: RITSTAKE_ABI, functionName: 'unstake', args: [amount] });
   }, [write]);
 
   const claimReward = useCallback(async (): Promise<`0x${string}`> => {
-    return write({ address: STAKING_ADDRESS, abi: STAKING_ABI, functionName: 'claimReward', args: [RITUAL_TOKEN] });
+    return write({ address: RITSTAKE_ADDRESS, abi: RITSTAKE_ABI, functionName: 'claimReward', args: [] });
   }, [write]);
 
   const getStakeInfo = useCallback(async (): Promise<{ amount: bigint; pending: bigint }> => {
     if (!userAddress || !publicClient) return { amount: 0n, pending: 0n };
     const result = await publicClient.readContract({
-      address: STAKING_ADDRESS, abi: STAKING_ABI, functionName: 'getStakeInfo', args: [RITUAL_TOKEN, userAddress],
+      address: RITSTAKE_ADDRESS, abi: RITSTAKE_ABI, functionName: 'getStakeInfo', args: [userAddress],
     }) as [bigint, bigint];
     return { amount: result[0], pending: result[1] };
   }, [userAddress, publicClient]);

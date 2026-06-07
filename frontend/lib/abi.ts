@@ -7,13 +7,24 @@ export const ERC20_ABI = [
 ] as const;
 
 export const RITPOOL_ABI = [
-  { name: 'deposit',      type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'amount', type: 'uint256' }],       outputs: [{ name: 'sharesIssued', type: 'uint256' }] },
+  { name: 'deposit',      type: 'function', stateMutability: 'payable',    inputs: [],                                          outputs: [{ name: 'sharesIssued', type: 'uint256' }] },
   { name: 'withdraw',     type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'shareAmount', type: 'uint256' }],  outputs: [{ name: 'ritualOut', type: 'uint256' }] },
   { name: 'getUserInfo',  type: 'function', stateMutability: 'view',       inputs: [{ name: 'user', type: 'address' }],         outputs: [{ name: 'userShares', type: 'uint256' }, { name: 'ritualValue', type: 'uint256' }] },
   { name: 'totalShares',  type: 'function', stateMutability: 'view',       inputs: [],                                          outputs: [{ type: 'uint256' }] },
   { name: 'totalRitual',  type: 'function', stateMutability: 'view',       inputs: [],                                          outputs: [{ type: 'uint256' }] },
   { type: 'event', name: 'Deposited', inputs: [{ name: 'user', type: 'address', indexed: true }, { name: 'ritualAmount', type: 'uint256', indexed: false }, { name: 'sharesIssued', type: 'uint256', indexed: false }] },
   { type: 'event', name: 'Withdrawn', inputs: [{ name: 'user', type: 'address', indexed: true }, { name: 'ritualAmount', type: 'uint256', indexed: false }, { name: 'sharesBurned', type: 'uint256', indexed: false }] },
+] as const;
+
+export const RITSTAKE_ABI = [
+  { name: 'stake',             type: 'function', stateMutability: 'payable',    inputs: [],                                         outputs: [] },
+  { name: 'unstake',           type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'amount', type: 'uint256' }],       outputs: [] },
+  { name: 'claimReward',       type: 'function', stateMutability: 'nonpayable', inputs: [],                                         outputs: [] },
+  { name: 'getStakeInfo',      type: 'function', stateMutability: 'view',       inputs: [{ name: 'userAddr', type: 'address' }],     outputs: [{ name: 'amount', type: 'uint256' }, { name: 'pending', type: 'uint256' }] },
+  { name: 'rewardRatePerBlock',type: 'function', stateMutability: 'view',       inputs: [],                                         outputs: [{ type: 'uint256' }] },
+  { type: 'event', name: 'Staked',        inputs: [{ name: 'user', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }] },
+  { type: 'event', name: 'Unstaked',      inputs: [{ name: 'user', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }, { name: 'reward', type: 'uint256', indexed: false }] },
+  { type: 'event', name: 'RewardClaimed', inputs: [{ name: 'user', type: 'address', indexed: true }, { name: 'reward', type: 'uint256', indexed: false }] },
 ] as const;
 
 export const RITBRIDGE_ABI = [
@@ -33,10 +44,3 @@ export const WRAPPED_RITUAL_ABI = [
   { type: 'event', name: 'BurnedForBridge', inputs: [{ name: 'burnId', type: 'bytes32', indexed: true }, { name: 'user', type: 'address', indexed: true }, { name: 'amount', type: 'uint256', indexed: false }, { name: 'ritualChainRecipient', type: 'address', indexed: false }] },
 ] as const;
 
-export const STAKING_ABI = [
-  { name: 'getStakeInfo',       type: 'function', stateMutability: 'view',       inputs: [{ name: 'token', type: 'address' }, { name: 'user', type: 'address' }], outputs: [{ name: 'amount', type: 'uint256' }, { name: 'pending', type: 'uint256' }] },
-  { name: 'rewardRatePerBlock', type: 'function', stateMutability: 'view',       inputs: [], outputs: [{ type: 'uint256' }] },
-  { name: 'stake',              type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [] },
-  { name: 'unstake',            type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [] },
-  { name: 'claimReward',        type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }], outputs: [] },
-] as const;

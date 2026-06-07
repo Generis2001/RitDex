@@ -55,7 +55,7 @@ export default function RitAgentPage() {
 
   const [selectedFeed, setSelectedFeed] = useState<FeedId>('eth-price');
   const [walletBalance, setWalletBalance] = useState(0n);    // RitualWallet native balance
-  const [erc20Balance, setErc20Balance] = useState(0n);      // ERC-20 RITUAL balance
+  const [nativeBalance, setNativeBalance] = useState(0n);   // main wallet native RITUAL
   const [lockUntil, setLockUntil] = useState(0n);
   const [depositAmt, setDepositAmt] = useState('0.05');
   const [withdrawAmt, setWithdrawAmt] = useState('');
@@ -67,31 +67,32 @@ export default function RitAgentPage() {
   const [successTx, setSuccessTx] = useState<{ hash: string; action: string } | null>(null);
   const [showWithdraw, setShowWithdraw] = useState(false);
 
-  // Use a ref so the interval callback always sees the latest version of loadWallet
-  const loadRef = useRef<() => Promise<void>>();
+  // Refs so interval always calls the latest version without re-registering
+  const getWalletInfoRef = useRef(getWalletInfo);
+  const getBalanceRef    = useRef(getBalance);
+  getWalletInfoRef.current = getWalletInfo;
+  getBalanceRef.current    = getBalance;
 
   const loadWallet = useCallback(async () => {
     try {
-      const [info, erc20] = await Promise.all([
-        getWalletInfo(),
-        getBalance(),
+      const [info, native] = await Promise.all([
+        getWalletInfoRef.current(),
+        getBalanceRef.current(),
       ]);
       setWalletBalance(info.balance);
       setLockUntil(info.lockUntil);
-      setErc20Balance(erc20);
+      setNativeBalance(native);
     } catch { /* not connected yet */ }
-  }, [getWalletInfo, getBalance]);
-
-  loadRef.current = loadWallet;
+  }, []); // stable — reads current values via refs
 
   useEffect(() => {
     if (!isConnected) {
       setWalletBalance(0n);
-      setErc20Balance(0n);
+      setNativeBalance(0n);
       return;
     }
     loadWallet();
-    const id = setInterval(() => loadRef.current?.(), 10_000);
+    const id = setInterval(loadWallet, 10_000);
     return () => clearInterval(id);
   }, [isConnected, loadWallet]);
 
@@ -157,7 +158,7 @@ export default function RitAgentPage() {
   };
 
   const balanceF   = parseFloat(formatEther(walletBalance));
-  const erc20F     = parseFloat(formatEther(erc20Balance));
+  const nativeF    = parseFloat(formatEther(nativeBalance));
   const hasBalance = walletBalance >= parseEther('0.005');
   const lockExpired = lockUntil === 0n || lockUntil < BigInt(Math.floor(Date.now() / 1000));
 
@@ -178,9 +179,9 @@ export default function RitAgentPage() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-ritual-surface rounded-lg p-3">
-            <div className="text-xs text-gray-500 mb-1">Wallet (ERC-20)</div>
+            <div className="text-xs text-gray-500 mb-1">Wallet (native)</div>
             <div className="font-mono text-sm text-gray-200">
-              {erc20F.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+              {nativeF.toLocaleString(undefined, { maximumFractionDigits: 4 })}
             </div>
             <div className="text-xs text-gray-600">RITUAL</div>
           </div>

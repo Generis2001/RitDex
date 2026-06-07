@@ -24,14 +24,20 @@ export default function RitpoolPage() {
   const [error, setError] = useState('');
   const [successTx, setSuccessTx] = useState<{ hash: string; action: string } | null>(null);
 
-  const loadRef = useRef<() => Promise<void>>();
+  // Refs so interval always calls the latest version without re-registering
+  const getBalanceRef   = useRef(getBalance);
+  const getUserInfoRef  = useRef(getUserInfo);
+  const getPoolStatsRef = useRef(getPoolStats);
+  getBalanceRef.current   = getBalance;
+  getUserInfoRef.current  = getUserInfo;
+  getPoolStatsRef.current = getPoolStats;
 
   const load = useCallback(async () => {
     try {
       const [bal, info, stats] = await Promise.all([
-        getBalance(),
-        getUserInfo(),
-        getPoolStats(),
+        getBalanceRef.current(),
+        getUserInfoRef.current(),
+        getPoolStatsRef.current(),
       ]);
       setWalletBalance(bal);
       setUserShares(info.userShares);
@@ -39,9 +45,7 @@ export default function RitpoolPage() {
       setTotalRitual(stats.totalRitual);
       setTotalShares(stats.totalShares);
     } catch { /* rpc not ready */ }
-  }, [getBalance, getUserInfo, getPoolStats]);
-
-  loadRef.current = load;
+  }, []); // stable — reads current values via refs
 
   useEffect(() => {
     if (!isConnected) {
@@ -53,7 +57,7 @@ export default function RitpoolPage() {
       return;
     }
     load();
-    const id = setInterval(() => loadRef.current?.(), 10_000);
+    const id = setInterval(load, 10_000);
     return () => clearInterval(id);
   }, [isConnected, load]);
 
@@ -122,7 +126,7 @@ export default function RitpoolPage() {
           <div className="bg-ritual-surface rounded-lg p-3">
             <div className="text-xs text-gray-500 mb-1">Pool Total</div>
             <div className="font-mono text-sm text-ritual-green">
-              {poolF.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              {poolF.toLocaleString(undefined, { maximumFractionDigits: 4 })}
             </div>
             <div className="text-xs text-gray-600">RITUAL</div>
           </div>
@@ -214,7 +218,7 @@ export default function RitpoolPage() {
 
       <div className="w-full max-w-lg bg-ritual-elevated border border-gray-800 rounded-xl p-5 text-center">
         <p className="text-xs text-gray-500">
-          Ritpool holds a single-asset RITUAL reserve. Shares represent a pro-rata claim on the pool.
+          Ritpool holds a single-asset native RITUAL reserve. Shares represent a pro-rata claim on the pool.
           Deposits and withdrawals are instant. Pool value grows as yield is added by the protocol.
         </p>
       </div>

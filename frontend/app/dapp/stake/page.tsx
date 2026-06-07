@@ -20,18 +20,23 @@ export default function RitstakePage() {
   const [error, setError] = useState('');
   const [successTx, setSuccessTx] = useState<{ hash: string; action: string } | null>(null);
 
-  const loadRef = useRef<() => Promise<void>>();
+  // Refs so interval always calls the latest version without re-registering
+  const getStakeInfoRef = useRef(getStakeInfo);
+  const getBalanceRef   = useRef(getBalance);
+  getStakeInfoRef.current = getStakeInfo;
+  getBalanceRef.current   = getBalance;
 
   const load = useCallback(async () => {
     try {
-      const [info, bal] = await Promise.all([getStakeInfo(), getBalance()]);
+      const [info, bal] = await Promise.all([
+        getStakeInfoRef.current(),
+        getBalanceRef.current(),
+      ]);
       setStaked(info.amount);
       setPending(info.pending);
       setWalletBalance(bal);
     } catch { /* rpc not ready */ }
-  }, [getStakeInfo, getBalance]);
-
-  loadRef.current = load;
+  }, []); // stable — reads current values via refs
 
   useEffect(() => {
     if (!isConnected) {
@@ -41,7 +46,7 @@ export default function RitstakePage() {
       return;
     }
     load();
-    const id = setInterval(() => loadRef.current?.(), 10_000);
+    const id = setInterval(load, 10_000);
     return () => clearInterval(id);
   }, [isConnected, load]);
 
@@ -211,7 +216,7 @@ export default function RitstakePage() {
       <div className="w-full max-w-md bg-ritual-elevated border border-gray-800 rounded-xl p-5 text-center">
         <p className="text-xs text-gray-500">
           Rewards accumulate every block (~350ms on Ritual Chain). Unstaking claims all pending rewards automatically.
-          RITUAL rewards are funded from the protocol treasury.
+          Native RITUAL rewards are funded from the protocol treasury.
         </p>
       </div>
 
