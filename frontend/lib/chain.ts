@@ -16,11 +16,6 @@ export const ritualChain = defineChain({
       url: 'https://explorer.ritualfoundation.org',
     },
   },
-  contracts: {
-    multicall3: {
-      address: '0x5577Ea679673Ec7508E9524100a188E7600202a3',
-    },
-  },
 });
 
 export const EXPLORER_URL = 'http://explorer.ritualfoundation.org';
