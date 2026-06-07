@@ -68,6 +68,7 @@ const RITUAL_WALLET_ABI = [
   { name: 'balanceOf', type: 'function', stateMutability: 'view',    inputs: [{ name: 'user', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'lockUntil', type: 'function', stateMutability: 'view',    inputs: [{ name: 'user', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'deposit',   type: 'function', stateMutability: 'payable', inputs: [{ name: 'lockDuration', type: 'uint256' }], outputs: [] },
+  { name: 'withdraw',  type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'amount', type: 'uint256' }], outputs: [] },
 ] as const;
 
 // ── Encode a simple GET request ───────────────────────────────────────────────
@@ -143,6 +144,18 @@ export function useRitAgent() {
     await publicClient!.waitForTransactionReceipt({ hash });
   }
 
+  async function withdrawWallet(amountEther: string): Promise<void> {
+    if (!walletClient || !address) throw new Error('Wallet not connected');
+    const { encodeFunctionData } = await import('viem');
+    const data = encodeFunctionData({ abi: RITUAL_WALLET_ABI as any, functionName: 'withdraw', args: [parseEther(amountEther)] });
+    const hash = await walletClient.sendTransaction({
+      to: RITUAL_WALLET,
+      data,
+      gas: 200_000n,
+    });
+    await publicClient!.waitForTransactionReceipt({ hash });
+  }
+
   // Fetch external data via Ritual HTTP precompile
   async function fetchURL(url: string): Promise<{
     hash: `0x${string}`;
@@ -202,5 +215,5 @@ export function useRitAgent() {
     return { result: null, settled: false };
   }
 
-  return { fetchURL, getExecutor, getWalletInfo, depositWallet, pollSettlement };
+  return { fetchURL, getExecutor, getWalletInfo, depositWallet, withdrawWallet, pollSettlement };
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { formatUnits, parseUnits } from 'viem';
 import { TxSuccessModal } from '@/components/TxSuccessModal';
@@ -24,6 +24,8 @@ export default function RitpoolPage() {
   const [error, setError] = useState('');
   const [successTx, setSuccessTx] = useState<{ hash: string; action: string } | null>(null);
 
+  const loadRef = useRef<() => Promise<void>>();
+
   const load = useCallback(async () => {
     try {
       const [bal, info, stats] = await Promise.all([
@@ -36,13 +38,22 @@ export default function RitpoolPage() {
       setRitualValue(info.ritualValue);
       setTotalRitual(stats.totalRitual);
       setTotalShares(stats.totalShares);
-    } catch { /* not deployed */ }
+    } catch { /* rpc not ready */ }
   }, [getBalance, getUserInfo, getPoolStats]);
 
+  loadRef.current = load;
+
   useEffect(() => {
-    if (!isConnected) return;
+    if (!isConnected) {
+      setWalletBalance(0n);
+      setUserShares(0n);
+      setRitualValue(0n);
+      setTotalRitual(0n);
+      setTotalShares(0n);
+      return;
+    }
     load();
-    const id = setInterval(load, 10_000);
+    const id = setInterval(() => loadRef.current?.(), 10_000);
     return () => clearInterval(id);
   }, [isConnected, load]);
 
@@ -67,8 +78,7 @@ export default function RitpoolPage() {
     if (!amount) return;
     setError(''); setLoading(true);
     try {
-      const shareAmt = parseUnits(amount, 18);
-      const hash = await withdraw(shareAmt);
+      const hash = await withdraw(parseUnits(amount, 18));
       setSuccessTx({ hash, action: `Removed ${amount} pool shares from Ritpool` });
       setAmount('');
       await load();
@@ -77,36 +87,63 @@ export default function RitpoolPage() {
     } finally { setLoading(false); }
   };
 
+  const walletF  = parseFloat(formatUnits(walletBalance, 18));
+  const sharesF  = parseFloat(formatUnits(userShares, 18));
+  const valueF   = parseFloat(formatUnits(ritualValue, 18));
+  const poolF    = parseFloat(formatUnits(totalRitual, 18));
+
   return (
     <div className="flex flex-col items-center gap-6">
       <div className="w-full max-w-lg bg-ritual-elevated border border-gray-800 rounded-xl shadow-card p-6 relative">
         <div className="absolute inset-0 rounded-xl pointer-events-none border border-ritual-green/10" />
 
-        <h2 className="font-display text-lg text-gray-100 mb-1">Ritpool</h2>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-display text-lg text-gray-100">Ritpool</h2>
+          <a
+            href="https://faucet.ritualfoundation.org/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-gray-500 hover:text-ritual-green transition-colors"
+          >
+            Get RITUAL ↗
+          </a>
+        </div>
         <p className="text-xs text-gray-500 italic mb-5">single-asset RITUAL liquidity vault</p>
 
         {/* Pool stats */}
-        <div className="grid grid-cols-3 gap-3 mb-5">
-          <div className="bg-ritual-surface rounded-lg p-3 text-center">
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="bg-ritual-surface rounded-lg p-3">
+            <div className="text-xs text-gray-500 mb-1">Wallet Balance</div>
+            <div className="font-mono text-sm text-gray-200">
+              {walletF.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+            </div>
+            <div className="text-xs text-gray-600">RITUAL</div>
+          </div>
+          <div className="bg-ritual-surface rounded-lg p-3">
             <div className="text-xs text-gray-500 mb-1">Pool Total</div>
             <div className="font-mono text-sm text-ritual-green">
-              {parseFloat(formatUnits(totalRitual, 18)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              {poolF.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </div>
             <div className="text-xs text-gray-600">RITUAL</div>
-          </div>
-          <div className="bg-ritual-surface rounded-lg p-3 text-center">
-            <div className="text-xs text-gray-500 mb-1">Your Value</div>
-            <div className="font-mono text-sm text-gray-200">
-              {parseFloat(formatUnits(ritualValue, 18)).toFixed(4)}
-            </div>
-            <div className="text-xs text-gray-600">RITUAL</div>
-          </div>
-          <div className="bg-ritual-surface rounded-lg p-3 text-center">
-            <div className="text-xs text-gray-500 mb-1">Your Share</div>
-            <div className="font-mono text-sm text-gray-200">{sharePercent}%</div>
-            <div className="text-xs text-gray-600">of pool</div>
           </div>
         </div>
+
+        {userShares > 0n && (
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            <div className="bg-ritual-surface rounded-lg p-3">
+              <div className="text-xs text-gray-500 mb-1">Your Shares</div>
+              <div className="font-mono text-sm text-gray-200">{sharesF.toFixed(4)}</div>
+              <div className="text-xs text-gray-600">shares · {sharePercent}% of pool</div>
+            </div>
+            <div className="bg-ritual-surface rounded-lg p-3">
+              <div className="text-xs text-gray-500 mb-1">Your Value</div>
+              <div className="font-mono text-sm text-ritual-green">{valueF.toFixed(4)}</div>
+              <div className="text-xs text-gray-600">RITUAL redeemable</div>
+            </div>
+          </div>
+        )}
+
+        {userShares === 0n && <div className="mb-5" />}
 
         {/* Mode toggle */}
         <div className="flex bg-ritual-surface rounded-lg p-1 mb-5 gap-1">
@@ -117,7 +154,7 @@ export default function RitpoolPage() {
               className={`flex-1 py-2 rounded-md text-sm font-semibold capitalize transition-colors
                 ${mode === m ? 'bg-ritual-elevated text-ritual-green border border-ritual-green/30' : 'text-gray-500 hover:text-gray-300'}`}
             >
-              {m === 'deposit' ? '+ Add' : '− Remove'} RITUAL
+              {m === 'deposit' ? '+ Add RITUAL' : '− Remove RITUAL'}
             </button>
           ))}
         </div>
@@ -126,7 +163,7 @@ export default function RitpoolPage() {
         <div className="mb-5">
           <div className="flex justify-between mb-1">
             <label className="text-xs text-gray-500 uppercase tracking-wider">
-              {mode === 'deposit' ? 'RITUAL to deposit' : 'Shares to redeem'}
+              {mode === 'deposit' ? 'Amount to deposit' : 'Shares to redeem'}
             </label>
             <button
               onClick={() => {
@@ -135,7 +172,9 @@ export default function RitpoolPage() {
               }}
               className="text-xs text-ritual-green hover:underline"
             >
-              Max
+              Max ({mode === 'deposit'
+                ? `${walletF.toFixed(4)} RITUAL`
+                : `${sharesF.toFixed(4)} shares`})
             </button>
           </div>
           <input
@@ -144,16 +183,12 @@ export default function RitpoolPage() {
             placeholder="0.00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="ritual-input w-full bg-ritual-surface border border-gray-700 rounded-lg px-4 py-3 text-gray-200"
+            className="w-full bg-ritual-surface border border-gray-700 rounded-lg px-4 py-3 text-gray-200
+                       focus:outline-none focus:border-ritual-green/50 transition-colors"
           />
-          {mode === 'deposit' && (
+          {mode === 'withdraw' && userShares > 0n && (
             <p className="text-xs text-gray-600 mt-1.5">
-              Wallet: {parseFloat(formatUnits(walletBalance, 18)).toFixed(4)} RITUAL
-            </p>
-          )}
-          {mode === 'withdraw' && (
-            <p className="text-xs text-gray-600 mt-1.5">
-              Shares: {parseFloat(formatUnits(userShares, 18)).toFixed(4)} · Value: {parseFloat(formatUnits(ritualValue, 18)).toFixed(4)} RITUAL
+              Redeeming {sharesF > 0 && amount ? ((parseFloat(amount) / sharesF) * valueF).toFixed(4) : '—'} RITUAL
             </p>
           )}
         </div>
@@ -166,17 +201,20 @@ export default function RitpoolPage() {
 
         <button
           onClick={mode === 'deposit' ? handleDeposit : handleWithdraw}
-          disabled={!isConnected || loading || !amount}
+          disabled={!isConnected || loading || !amount || (mode === 'withdraw' && userShares === 0n)}
           className="w-full py-3.5 rounded-lg border border-ritual-green text-ritual-green font-semibold
                      hover:bg-ritual-green/10 glow-green transition-all disabled:opacity-40"
         >
-          {!isConnected ? 'Connect Wallet' : loading ? 'Processing…' : mode === 'deposit' ? 'Add to Pool' : 'Remove from Pool'}
+          {!isConnected ? 'Connect Wallet'
+            : loading ? 'Processing…'
+            : mode === 'deposit' ? 'Add to Pool'
+            : 'Remove from Pool'}
         </button>
       </div>
 
       <div className="w-full max-w-lg bg-ritual-elevated border border-gray-800 rounded-xl p-5 text-center">
         <p className="text-xs text-gray-500">
-          Ritpool holds a single-asset RITUAL reserve. Your shares represent a pro-rata claim on the pool.
+          Ritpool holds a single-asset RITUAL reserve. Shares represent a pro-rata claim on the pool.
           Deposits and withdrawals are instant. Pool value grows as yield is added by the protocol.
         </p>
       </div>

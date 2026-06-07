@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { formatEther, parseEther } from 'viem';
 import { TxSuccessModal } from '@/components/TxSuccessModal';
 import { useRitAgent } from '@/hooks/useRitAgent';
+import { useRitualBalance } from '@/hooks/useContracts';
 import { EXPLORER_URL } from '@/lib/chain';
 
-// Public data endpoints available on the open web
 const DATA_FEEDS = [
   {
     id: 'eth-price',
@@ -50,30 +50,48 @@ interface FetchRecord {
 
 export default function RitAgentPage() {
   const { isConnected } = useAccount();
-  const { fetchURL, getWalletInfo, depositWallet, pollSettlement } = useRitAgent();
+  const { fetchURL, getWalletInfo, depositWallet, withdrawWallet, pollSettlement } = useRitAgent();
+  const { getBalance } = useRitualBalance();
 
   const [selectedFeed, setSelectedFeed] = useState<FeedId>('eth-price');
-  const [walletBalance, setWalletBalance] = useState(0n);
+  const [walletBalance, setWalletBalance] = useState(0n);    // RitualWallet native balance
+  const [erc20Balance, setErc20Balance] = useState(0n);      // ERC-20 RITUAL balance
   const [lockUntil, setLockUntil] = useState(0n);
   const [depositAmt, setDepositAmt] = useState('0.05');
+  const [withdrawAmt, setWithdrawAmt] = useState('');
   const [depositing, setDepositing] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
   const [fetchState, setFetchState] = useState<FetchState>('idle');
   const [error, setError] = useState('');
   const [records, setRecords] = useState<FetchRecord[]>([]);
   const [successTx, setSuccessTx] = useState<{ hash: string; action: string } | null>(null);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+
+  // Use a ref so the interval callback always sees the latest version of loadWallet
+  const loadRef = useRef<() => Promise<void>>();
 
   const loadWallet = useCallback(async () => {
     try {
-      const info = await getWalletInfo();
+      const [info, erc20] = await Promise.all([
+        getWalletInfo(),
+        getBalance(),
+      ]);
       setWalletBalance(info.balance);
       setLockUntil(info.lockUntil);
-    } catch { /* not connected */ }
-  }, [getWalletInfo]);
+      setErc20Balance(erc20);
+    } catch { /* not connected yet */ }
+  }, [getWalletInfo, getBalance]);
+
+  loadRef.current = loadWallet;
 
   useEffect(() => {
-    if (!isConnected) return;
+    if (!isConnected) {
+      setWalletBalance(0n);
+      setErc20Balance(0n);
+      return;
+    }
     loadWallet();
-    const id = setInterval(loadWallet, 15_000);
+    const id = setInterval(() => loadRef.current?.(), 10_000);
     return () => clearInterval(id);
   }, [isConnected, loadWallet]);
 
@@ -85,6 +103,19 @@ export default function RitAgentPage() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Deposit failed');
     } finally { setDepositing(false); }
+  };
+
+  const handleWithdraw = async () => {
+    if (!withdrawAmt) return;
+    setWithdrawing(true);
+    try {
+      await withdrawWallet(withdrawAmt);
+      setWithdrawAmt('');
+      await loadWallet();
+      setSuccessTx({ hash: '', action: `Withdrew ${withdrawAmt} RITUAL from RitualWallet` });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Withdraw failed');
+    } finally { setWithdrawing(false); }
   };
 
   const handleFetch = async () => {
@@ -109,7 +140,6 @@ export default function RitAgentPage() {
       } else {
         setFetchState('pending');
         setRecords((r) => r.map((x) => x.id === recordId ? { ...x, hash, state: 'pending' } : x));
-        // Poll for settlement
         pollSettlement(hash).then(({ result: r2, settled: s2 }) => {
           const value = s2 && r2
             ? (r2.errorMessage ? `Error: ${r2.errorMessage}` : feed.extract(r2.body))
@@ -126,29 +156,95 @@ export default function RitAgentPage() {
     }
   };
 
-  const balanceF = parseFloat(formatEther(walletBalance));
+  const balanceF   = parseFloat(formatEther(walletBalance));
+  const erc20F     = parseFloat(formatEther(erc20Balance));
   const hasBalance = walletBalance >= parseEther('0.005');
+  const lockExpired = lockUntil === 0n || lockUntil < BigInt(Math.floor(Date.now() / 1000));
 
   return (
     <div className="flex flex-col items-center gap-6">
-      {/* Main card */}
+      {/* ── RITUAL balances card ── */}
+      <div className="w-full max-w-lg bg-ritual-elevated border border-gray-800 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-300">Your RITUAL Balances</h3>
+          <a
+            href="https://faucet.ritualfoundation.org/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-gray-500 hover:text-ritual-green transition-colors"
+          >
+            Faucet ↗
+          </a>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-ritual-surface rounded-lg p-3">
+            <div className="text-xs text-gray-500 mb-1">Wallet (ERC-20)</div>
+            <div className="font-mono text-sm text-gray-200">
+              {erc20F.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+            </div>
+            <div className="text-xs text-gray-600">RITUAL</div>
+          </div>
+          <div className="bg-ritual-surface rounded-lg p-3">
+            <div className="text-xs text-gray-500 mb-1">RitualWallet (native)</div>
+            <div className={`font-mono text-sm ${hasBalance ? 'text-ritual-green' : 'text-yellow-400'}`}>
+              {balanceF.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+            </div>
+            <div className="text-xs text-gray-600">RITUAL · for TEE fees</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Main RitAgent card ── */}
       <div className="w-full max-w-lg bg-ritual-elevated border border-gray-800 rounded-xl shadow-card p-6 relative">
         <div className="absolute inset-0 rounded-xl pointer-events-none border border-ritual-green/10" />
 
         <h2 className="font-display text-lg text-gray-100 mb-0.5">RitAgent</h2>
         <p className="text-xs text-gray-500 italic mb-5">on-chain HTTP via Ritual TEE precompile</p>
 
-        {/* RitualWallet status */}
-        <div className={`mb-5 px-4 py-3 rounded-lg border text-sm flex items-center justify-between
-          ${hasBalance ? 'border-ritual-green/20 bg-ritual-green/5' : 'border-yellow-500/20 bg-yellow-500/5'}`}>
-          <div>
-            <div className="text-xs text-gray-500 mb-0.5">RitualWallet balance</div>
-            <div className={`font-mono font-semibold ${hasBalance ? 'text-ritual-green' : 'text-yellow-400'}`}>
-              {balanceF.toFixed(4)} RITUAL
+        {/* RitualWallet deposit / withdraw */}
+        <div className={`mb-5 px-4 py-3 rounded-lg border ${hasBalance ? 'border-ritual-green/20 bg-ritual-green/5' : 'border-yellow-500/20 bg-yellow-500/5'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <div className="text-xs text-gray-500 mb-0.5">RitualWallet balance</div>
+              <div className={`font-mono font-semibold text-sm ${hasBalance ? 'text-ritual-green' : 'text-yellow-400'}`}>
+                {balanceF.toFixed(4)} RITUAL
+              </div>
             </div>
+            {walletBalance > 0n && (
+              <button
+                onClick={() => setShowWithdraw((v) => !v)}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors border border-gray-700 rounded px-2 py-1"
+              >
+                {showWithdraw ? 'Cancel' : 'Withdraw'}
+              </button>
+            )}
           </div>
-          {!hasBalance && (
-            <div className="flex items-center gap-2">
+
+          {showWithdraw ? (
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                type="number" step="0.001" min="0.001"
+                placeholder="Amount to withdraw"
+                value={withdrawAmt}
+                onChange={(e) => setWithdrawAmt(e.target.value)}
+                className="flex-1 bg-ritual-surface border border-gray-700 rounded px-2 py-1 text-xs text-gray-200"
+              />
+              <button
+                onClick={() => setWithdrawAmt(formatEther(walletBalance))}
+                className="text-xs text-ritual-green hover:underline"
+              >Max</button>
+              <button
+                onClick={handleWithdraw}
+                disabled={!isConnected || withdrawing || !withdrawAmt || !lockExpired}
+                className="px-3 py-1.5 border border-gray-600 text-gray-300 text-xs font-semibold rounded-lg
+                           hover:bg-gray-700/50 transition-colors disabled:opacity-40"
+                title={!lockExpired ? 'Lock period has not expired yet' : ''}
+              >
+                {withdrawing ? '…' : 'Withdraw'}
+              </button>
+            </div>
+          ) : !hasBalance ? (
+            <div className="flex items-center gap-2 mt-2">
               <input
                 type="number" step="0.01" min="0.01" value={depositAmt}
                 onChange={(e) => setDepositAmt(e.target.value)}
@@ -160,10 +256,10 @@ export default function RitAgentPage() {
                 className="px-3 py-1.5 border border-yellow-500/50 text-yellow-400 text-xs font-semibold rounded-lg
                            hover:bg-yellow-500/10 transition-colors disabled:opacity-40"
               >
-                {depositing ? '…' : 'Deposit'}
+                {depositing ? '…' : 'Deposit RITUAL'}
               </button>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Data feed selector */}

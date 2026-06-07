@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -19,17 +19,18 @@ function RitualBalancePill() {
   const { isConnected } = useAccount();
   const { getBalance } = useRitualBalance();
   const [balance, setBalance] = useState<bigint | null>(null);
-
-  const refresh = useCallback(async () => {
-    try { setBalance(await getBalance()); } catch { /* not connected */ }
-  }, [getBalance]);
+  const getBalanceRef = useRef(getBalance);
+  getBalanceRef.current = getBalance;
 
   useEffect(() => {
     if (!isConnected) { setBalance(null); return; }
+    const refresh = async () => {
+      try { setBalance(await getBalanceRef.current()); } catch { /* not connected */ }
+    };
     refresh();
     const id = setInterval(refresh, 10_000);
     return () => clearInterval(id);
-  }, [isConnected, refresh]);
+  }, [isConnected]);
 
   if (!isConnected || balance === null) return null;
 

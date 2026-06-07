@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { formatUnits, parseUnits } from 'viem';
 import { TxSuccessModal } from '@/components/TxSuccessModal';
@@ -20,19 +20,28 @@ export default function RitstakePage() {
   const [error, setError] = useState('');
   const [successTx, setSuccessTx] = useState<{ hash: string; action: string } | null>(null);
 
+  const loadRef = useRef<() => Promise<void>>();
+
   const load = useCallback(async () => {
     try {
       const [info, bal] = await Promise.all([getStakeInfo(), getBalance()]);
       setStaked(info.amount);
       setPending(info.pending);
       setWalletBalance(bal);
-    } catch { /* not connected */ }
+    } catch { /* rpc not ready */ }
   }, [getStakeInfo, getBalance]);
 
+  loadRef.current = load;
+
   useEffect(() => {
-    if (!isConnected) return;
+    if (!isConnected) {
+      setStaked(0n);
+      setPending(0n);
+      setWalletBalance(0n);
+      return;
+    }
     load();
-    const id = setInterval(load, 10_000);
+    const id = setInterval(() => loadRef.current?.(), 10_000);
     return () => clearInterval(id);
   }, [isConnected, load]);
 
@@ -45,7 +54,7 @@ export default function RitstakePage() {
       setStakeAmt('');
       await load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      setError(e instanceof Error ? e.message : 'Stake failed');
     } finally { setLoading(null); }
   };
 
@@ -58,7 +67,7 @@ export default function RitstakePage() {
       setUnstakeAmt('');
       await load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      setError(e instanceof Error ? e.message : 'Unstake failed');
     } finally { setLoading(null); }
   };
 
@@ -66,10 +75,10 @@ export default function RitstakePage() {
     setLoading('claim'); setError('');
     try {
       const hash = await claimReward();
-      setSuccessTx({ hash, action: `Claimed ${parseFloat(formatUnits(pending, 18)).toFixed(6)} RITUAL rewards` });
+      setSuccessTx({ hash, action: `Claimed ${pendingF.toFixed(6)} RITUAL rewards` });
       await load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      setError(e instanceof Error ? e.message : 'Claim failed');
     } finally { setLoading(null); }
   };
 
@@ -91,12 +100,16 @@ export default function RitstakePage() {
         <div className="grid grid-cols-3 gap-3 mb-5">
           <div className="bg-ritual-surface rounded-lg p-3 text-center">
             <div className="text-xs text-gray-500 mb-1">Wallet</div>
-            <div className="font-mono text-sm text-gray-300">{balanceF.toFixed(2)}</div>
+            <div className="font-mono text-sm text-gray-300">
+              {balanceF.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </div>
             <div className="text-xs text-gray-600">RITUAL</div>
           </div>
           <div className="bg-ritual-surface rounded-lg p-3 text-center">
             <div className="text-xs text-gray-500 mb-1">Staked</div>
-            <div className="font-mono text-sm text-gray-200">{stakedF.toFixed(4)}</div>
+            <div className="font-mono text-sm text-gray-200">
+              {stakedF.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+            </div>
             <div className="text-xs text-gray-600">RITUAL</div>
           </div>
           <div className="bg-ritual-surface rounded-lg p-3 text-center">
@@ -106,22 +119,28 @@ export default function RitstakePage() {
           </div>
         </div>
 
-        {/* Stake */}
+        {/* Stake row */}
         <div className="flex gap-2 mb-3">
           <div className="flex-1">
             <div className="flex justify-between mb-1">
               <span className="text-xs text-gray-500 uppercase tracking-wider">Stake RITUAL</span>
-              <button onClick={() => setStakeAmt(formatUnits(walletBalance, 18))} className="text-xs text-ritual-green hover:underline">Max</button>
+              <button
+                onClick={() => setStakeAmt(formatUnits(walletBalance, 18))}
+                className="text-xs text-ritual-green hover:underline"
+              >
+                Max ({balanceF.toFixed(2)})
+              </button>
             </div>
             <input
               type="number" min="0" placeholder="0.00" value={stakeAmt}
               onChange={(e) => setStakeAmt(e.target.value)}
-              className="ritual-input w-full bg-ritual-surface border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-200"
+              className="w-full bg-ritual-surface border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-200
+                         focus:outline-none focus:border-ritual-green/50 transition-colors"
             />
           </div>
           <button
             onClick={handleStake}
-            disabled={!isConnected || loading !== null || !stakeAmt}
+            disabled={!isConnected || loading !== null || !stakeAmt || walletBalance === 0n}
             className="self-end px-5 py-2.5 border border-ritual-green text-ritual-green text-sm font-semibold rounded-lg
                        hover:bg-ritual-green/10 transition-colors disabled:opacity-40"
           >
@@ -129,18 +148,24 @@ export default function RitstakePage() {
           </button>
         </div>
 
-        {/* Unstake */}
-        {stakedF > 0 && (
+        {/* Unstake row — only visible when staked */}
+        {staked > 0n && (
           <div className="flex gap-2 mb-3">
             <div className="flex-1">
               <div className="flex justify-between mb-1">
                 <span className="text-xs text-gray-500 uppercase tracking-wider">Unstake RITUAL</span>
-                <button onClick={() => setUnstakeAmt(formatUnits(staked, 18))} className="text-xs text-ritual-green hover:underline">Max</button>
+                <button
+                  onClick={() => setUnstakeAmt(formatUnits(staked, 18))}
+                  className="text-xs text-ritual-green hover:underline"
+                >
+                  Max ({stakedF.toFixed(4)})
+                </button>
               </div>
               <input
                 type="number" min="0" placeholder="0.00" value={unstakeAmt}
                 onChange={(e) => setUnstakeAmt(e.target.value)}
-                className="ritual-input w-full bg-ritual-surface border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-200"
+                className="w-full bg-ritual-surface border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-200
+                           focus:outline-none focus:border-ritual-green/50 transition-colors"
               />
             </div>
             <button
@@ -154,17 +179,27 @@ export default function RitstakePage() {
           </div>
         )}
 
-        {/* Claim */}
-        {pendingF > 0 && (
+        {/* Claim row */}
+        {pending > 0n && (
           <button
             onClick={handleClaim}
             disabled={!isConnected || loading !== null}
-            className="w-full py-2.5 border border-dashed border-ritual-gold text-ritual-gold text-sm
-                       rounded-lg hover:bg-ritual-gold/10 transition-colors disabled:opacity-40"
+            className="w-full py-2.5 border border-dashed border-yellow-500/50 text-yellow-400 text-sm
+                       rounded-lg hover:bg-yellow-500/10 transition-colors disabled:opacity-40 mb-3"
           >
             {loading === 'claim' ? 'Claiming…' : `Claim ${pendingF.toFixed(6)} RITUAL`}
           </button>
         )}
+
+        {/* Faucet link */}
+        <a
+          href="https://faucet.ritualfoundation.org/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block w-full py-2 text-xs text-center text-gray-500 hover:text-ritual-green transition-colors"
+        >
+          Get RITUAL from faucet ↗
+        </a>
 
         {error && (
           <div className="mt-3 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
