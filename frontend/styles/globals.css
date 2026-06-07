@@ -1,0 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Archivo+Black&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'Archivo Black', system-ui, sans-serif;
+  --font-body: 'Barlow', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: #000000;
+  color: #D1D5DB;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* ── Custom scrollbar ─────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #111827; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+
+/* ── Glow utilities ──────────────────────────────── */
+.glow-green { box-shadow: 0 0 30px -5px rgba(25,209,132,0.35); }
+.glow-white { box-shadow: 0 0 20px -5px rgba(255,255,255,0.15); }
+.text-glow-green { text-shadow: 0 0 20px rgba(25,209,132,0.6); }
+.text-glow-white { text-shadow: 0 0 15px rgba(255,255,255,0.5); }
+
+/* ── Mesh gradient background ──────────────────── */
+.mesh-bg {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(25,209,132,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(25,209,132,0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, rgba(31,41,55,0.5) 0%, transparent 50%),
+    #000000;
+}
+
+/* ── Landing-specific: grey/white mesh ─────────── */
+.landing-mesh {
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(200,200,200,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 70% 70%, rgba(180,180,180,0.05) 0%, transparent 55%),
+    #0a0a0a;
+}
+
+/* ── Noise grain overlay ────────────────────────── */
+.grain::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Tab active underline ───────────────────────── */
+.tab-active { border-bottom: 2px solid #19D184; color: #19D184; }
+
+/* ── Input focus ─────────────────────────────────── */
+.ritual-input:focus {
+  outline: none;
+  border-color: #374151;
+  box-shadow: 0 0 0 2px rgba(25,209,132,0.15);
+}
+
+/* ── Number input hide arrows ──────────────────── */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }

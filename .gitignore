@@ -1,0 +1,28 @@
+# Node
+node_modules/
+.npm
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/.env.local
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/*/dry-run/
+
+# Env files with secrets
+.env
+.env.local
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude memory / skills / local settings
+.claude/
+
+# Sensitive deploy cache
+contracts/cache/
