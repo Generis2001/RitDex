@@ -57,6 +57,7 @@ export default function RitAgentPage() {
   const [walletBalance, setWalletBalance] = useState(0n);    // RitualWallet native balance
   const [nativeBalance, setNativeBalance] = useState(0n);   // main wallet native RITUAL
   const [lockUntil, setLockUntil] = useState(0n);
+  const [currentBlock, setCurrentBlock] = useState(0n);
   const [depositAmt, setDepositAmt] = useState('0.05');
   const [withdrawAmt, setWithdrawAmt] = useState('');
   const [depositing, setDepositing] = useState(false);
@@ -81,6 +82,7 @@ export default function RitAgentPage() {
       ]);
       setWalletBalance(info.balance);
       setLockUntil(info.lockUntil);
+      setCurrentBlock(info.currentBlock);
       setNativeBalance(native);
     } catch { /* not connected yet */ }
   }, []); // stable — reads current values via refs
@@ -160,7 +162,8 @@ export default function RitAgentPage() {
   const balanceF   = parseFloat(formatEther(walletBalance));
   const nativeF    = parseFloat(formatEther(nativeBalance));
   const hasBalance = walletBalance >= parseEther('0.005');
-  const lockExpired = lockUntil === 0n || lockUntil < BigInt(Math.floor(Date.now() / 1000));
+  // Compare against actual block number — lockUntil is a block, not a timestamp
+  const lockExpired = lockUntil === 0n || (currentBlock > 0n && lockUntil <= currentBlock);
 
   return (
     <div className="flex flex-col items-center gap-6">
@@ -203,15 +206,18 @@ export default function RitAgentPage() {
         <p className="text-xs text-gray-500 italic mb-5">on-chain HTTP via Ritual TEE precompile</p>
 
         {/* RitualWallet deposit / withdraw */}
-        <div className={`mb-5 px-4 py-3 rounded-lg border ${hasBalance ? 'border-ritual-green/20 bg-ritual-green/5' : 'border-yellow-500/20 bg-yellow-500/5'}`}>
+        <div className={`mb-5 px-4 py-3 rounded-lg border ${hasBalance && !lockExpired ? 'border-ritual-green/20 bg-ritual-green/5' : 'border-yellow-500/20 bg-yellow-500/5'}`}>
           <div className="flex items-center justify-between mb-2">
             <div>
               <div className="text-xs text-gray-500 mb-0.5">RitualWallet balance</div>
-              <div className={`font-mono font-semibold text-sm ${hasBalance ? 'text-ritual-green' : 'text-yellow-400'}`}>
+              <div className={`font-mono font-semibold text-sm ${hasBalance && !lockExpired ? 'text-ritual-green' : 'text-yellow-400'}`}>
                 {balanceF.toFixed(4)} RITUAL
               </div>
+              {hasBalance && lockExpired && (
+                <div className="text-xs text-yellow-500 mt-0.5">Lock expired — re-deposit to use TEE</div>
+              )}
             </div>
-            {walletBalance > 0n && (
+            {walletBalance > 0n && lockExpired && (
               <button
                 onClick={() => setShowWithdraw((v) => !v)}
                 className="text-xs text-gray-500 hover:text-gray-300 transition-colors border border-gray-700 rounded px-2 py-1"
@@ -236,15 +242,14 @@ export default function RitAgentPage() {
               >Max</button>
               <button
                 onClick={handleWithdraw}
-                disabled={!isConnected || withdrawing || !withdrawAmt || !lockExpired}
+                disabled={!isConnected || withdrawing || !withdrawAmt}
                 className="px-3 py-1.5 border border-gray-600 text-gray-300 text-xs font-semibold rounded-lg
                            hover:bg-gray-700/50 transition-colors disabled:opacity-40"
-                title={!lockExpired ? 'Lock period has not expired yet' : ''}
               >
                 {withdrawing ? '…' : 'Withdraw'}
               </button>
             </div>
-          ) : !hasBalance ? (
+          ) : (!hasBalance || lockExpired) ? (
             <div className="flex items-center gap-2 mt-2">
               <input
                 type="number" step="0.01" min="0.01" value={depositAmt}
@@ -293,12 +298,13 @@ export default function RitAgentPage() {
 
         <button
           onClick={handleFetch}
-          disabled={!isConnected || fetchState === 'fetching' || !hasBalance}
+          disabled={!isConnected || fetchState === 'fetching' || !hasBalance || lockExpired}
           className="w-full py-3.5 rounded-lg border border-ritual-green text-ritual-green font-semibold
                      hover:bg-ritual-green/10 glow-green transition-all disabled:opacity-40"
         >
           {!isConnected ? 'Connect Wallet'
             : !hasBalance ? 'Deposit RITUAL to RitualWallet first'
+            : lockExpired ? 'Re-deposit to refresh your TEE lock'
             : fetchState === 'fetching' ? 'Submitting to Ritual Chain…'
             : fetchState === 'pending' ? 'Waiting for TEE settlement…'
             : '⚡ Fetch On-Chain via TEE'}

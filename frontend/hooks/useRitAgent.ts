@@ -123,19 +123,23 @@ export function useRitAgent() {
     return services[0].node.teeAddress as Address;
   }
 
-  async function getWalletInfo(): Promise<{ balance: bigint; lockUntil: bigint }> {
-    if (!address) return { balance: 0n, lockUntil: 0n };
-    const [balance, lockUntil] = await Promise.all([
+  async function getWalletInfo(): Promise<{ balance: bigint; lockUntil: bigint; currentBlock: bigint }> {
+    if (!address) return { balance: 0n, lockUntil: 0n, currentBlock: 0n };
+    const [balance, lockUntil, currentBlock] = await Promise.all([
       publicClient!.readContract({ address: RITUAL_WALLET, abi: RITUAL_WALLET_ABI, functionName: 'balanceOf', args: [address] }) as Promise<bigint>,
       publicClient!.readContract({ address: RITUAL_WALLET, abi: RITUAL_WALLET_ABI, functionName: 'lockUntil', args: [address] }) as Promise<bigint>,
+      publicClient!.getBlockNumber(),
     ]);
-    return { balance, lockUntil };
+    return { balance, lockUntil, currentBlock };
   }
+
+  // Lock duration: ~7 days at 350 ms/block on Ritual Chain
+  const LOCK_DURATION = 1_728_000n;
 
   async function depositWallet(amountEther: string): Promise<void> {
     if (!walletClient || !address) throw new Error('Wallet not connected');
     const { encodeFunctionData } = await import('viem');
-    const data = encodeFunctionData({ abi: RITUAL_WALLET_ABI as any, functionName: 'deposit', args: [5000n] });
+    const data = encodeFunctionData({ abi: RITUAL_WALLET_ABI as any, functionName: 'deposit', args: [LOCK_DURATION] });
     const hash = await walletClient.sendTransaction({
       to: RITUAL_WALLET,
       data,
